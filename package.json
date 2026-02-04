@@ -1,0 +1,48 @@
+{
+  "name": "@paypls/mcp-server",
+  "version": "0.1.0",
+  "description": "MCP server for AI agent wallet integration with PayPls - enables AI agents to manage Bitcoin and USDC payments",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "paypls-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "wallet",
+    "bitcoin",
+    "usdc",
+    "payments",
+    "claude",
+    "llm"
+  ],
+  "author": "PayPls",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/paypls/mcp-server.git"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  }
+}
