@@ -7,6 +7,10 @@ MCP (Model Context Protocol) server that enables AI agents to manage Bitcoin and
 
 ## What is this?
 
+> ⚠️ **Important:** This MCP server does NOT enforce spending limits or approval requirements. 
+> All limits are configured and enforced by the PayPls backend. Configure your limits in the 
+> [PayPls Dashboard](https://paypls.io) before giving agents access to real funds.
+
 This server allows AI assistants like Claude to:
 
 - 💰 Check wallet balances (BTC and USDC)
@@ -110,6 +114,23 @@ Once configured, you can ask Claude things like:
 - **Justifications**: Every send requires a justification that's logged and shown during approval.
 - **Bucket isolation**: Use separate buckets to limit agent access to specific funds.
 - **Token permissions**: API tokens can be scoped to specific actions and buckets.
+
+## Handling Approval Flows
+
+When a transaction exceeds auto-approve limits, the API returns:
+
+```json
+{
+  "status": "pending_approval",
+  "transaction_id": "...",
+  "message": "Awaiting human approval"
+}
+```
+
+Your agent should:
+1. Inform the user that approval is needed
+2. Optionally poll `/agent/tx/:id` to check status
+3. NOT retry the same transaction (use idempotency keys)
 
 ## Development
 
