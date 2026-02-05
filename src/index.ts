@@ -27,9 +27,6 @@ if (!API_TOKEN) {
   process.exit(1);
 }
 
-// Supported tokens
-type Token = 'BTC' | 'USDC';
-
 // Tool input schemas
 const WalletBalanceSchema = z.object({
   bucket_id: z.string().optional(),
