@@ -29,9 +29,13 @@
   ],
   "author": "PayPls",
   "license": "MIT",
+  "homepage": "https://paypls.io",
   "repository": {
     "type": "git",
     "url": "https://github.com/paypls/mcp-server.git"
+  },
+  "bugs": {
+    "url": "https://github.com/paypls/mcp-server/issues"
   },
   "engines": {
     "node": ">=18.0.0"

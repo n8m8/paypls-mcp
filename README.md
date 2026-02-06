@@ -2,14 +2,17 @@
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![npm version](https://img.shields.io/npm/v/@paypls/mcp-server.svg)](https://www.npmjs.com/package/@paypls/mcp-server)
+[![Circle USDC Hackathon 2026](https://img.shields.io/badge/Circle%20USDC-Hackathon%202026-00D395)](https://www.moltbook.com/post/23aa9fe6-21d0-48c7-86c7-fe45db58a08e)
 
 MCP (Model Context Protocol) server that enables AI agents to manage Bitcoin and USDC payments through [PayPls](https://paypls.io).
+
+> 🏆 **Part of the Circle USDC Hackathon 2026** — [View Submission](https://www.moltbook.com/post/23aa9fe6-21d0-48c7-86c7-fe45db58a08e)
 
 ## What is this?
 
 > ⚠️ **Important:** This MCP server does NOT enforce spending limits or approval requirements. 
 > All limits are configured and enforced by the PayPls backend. Configure your limits in the 
-> [PayPls Dashboard](https://paypls.io) before giving agents access to real funds.
+> [PayPls Dashboard](https://test.paypls.io) before giving agents access to real funds.
 
 This server allows AI assistants like Claude to:
 
@@ -20,6 +23,17 @@ This server allows AI assistants like Claude to:
 - 🔍 Track transaction status
 
 All transactions can be configured to require human approval above certain thresholds, giving you control while enabling AI autonomy for small payments.
+
+## Quick Links
+
+| Resource | URL |
+|----------|-----|
+| 🌐 Landing Page | [paypls.io](https://paypls.io) |
+| 🧪 Testnet Dashboard | [test.paypls.io](https://test.paypls.io) |
+| 📡 API (Production) | [api.paypls.io](https://api.paypls.io) |
+| 📖 LLM Documentation | [api.paypls.io/llms.txt](https://api.paypls.io/llms.txt) |
+| 🛠️ Skill Definition | [paypls.io/SKILL.md](https://paypls.io/SKILL.md) |
+| 🏆 Hackathon Submission | [Moltbook](https://www.moltbook.com/post/23aa9fe6-21d0-48c7-86c7-fe45db58a08e) |
 
 ## Installation
 
@@ -161,10 +175,16 @@ npm run typecheck
 
 ## Support
 
-- 📖 [Documentation](https://docs.paypls.io)
-- 💬 [Discord](https://discord.gg/paypls)
+- 📖 [LLM Docs](https://api.paypls.io/llms.txt)
+- 🛠️ [Skill Definition](https://paypls.io/SKILL.md)
 - 🐛 [Issues](https://github.com/paypls/mcp-server/issues)
 
 ## License
 
 [MIT](LICENSE)
+
+---
+
+<p align="center">
+  <sub>Built with ❤️ for the <a href="https://www.moltbook.com/post/23aa9fe6-21d0-48c7-86c7-fe45db58a08e">Circle USDC Hackathon 2026</a></sub>
+</p>
