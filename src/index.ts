@@ -5,7 +5,7 @@
  * Model Context Protocol server for AI agent wallet integration.
  * Enables AI agents to manage Bitcoin (BTC) and USDC payments via PayPls API.
  * 
- * @see https://github.com/paypls/mcp-server
+ * @see https://github.com/n8m8/paypls-mcp
  * @license MIT
  */
 
@@ -23,35 +23,34 @@ const API_TOKEN = process.env.PAYPLS_TOKEN;
 
 if (!API_TOKEN) {
   console.error('Error: PAYPLS_TOKEN environment variable is required');
-  console.error('Get your token at https://paypls.io/settings/api');
+  console.error('Get your token at https://paypls.io or https://test.paypls.io');
   process.exit(1);
 }
 
 // Tool input schemas
 const WalletBalanceSchema = z.object({
   bucket_id: z.string().optional(),
-  token: z.enum(['BTC', 'USDC']).optional().default('BTC'),
+  token: z.enum(['BTC', 'USDC', 'EURC']).optional(),
 });
-
-const WalletListBucketsSchema = z.object({});
 
 const WalletSendBtcSchema = z.object({
   bucket_id: z.string().optional(),
   address: z.string().min(26).max(62),
   amount_sats: z.number().int().positive(),
   justification: z.string().min(1).max(500),
+  idempotency_key: z.string().optional(),
 });
 
 const WalletSendUsdcSchema = z.object({
   bucket_id: z.string().optional(),
-  address: z.string().min(26).max(62),
+  address: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
   amount_usdc: z.number().positive(),
   justification: z.string().min(1).max(500),
+  idempotency_key: z.string().optional(),
 });
 
 const WalletReceiveSchema = z.object({
   bucket_id: z.string().optional(),
-  token: z.enum(['BTC', 'USDC']).optional().default('BTC'),
 });
 
 const WalletTxStatusSchema = z.object({
@@ -73,7 +72,7 @@ async function apiRequest<T>(
     headers: {
       'Authorization': `Bearer ${API_TOKEN}`,
       'Content-Type': 'application/json',
-      'User-Agent': 'paypls-mcp/0.1.0',
+      'User-Agent': 'paypls-mcp/0.2.0',
     },
     body: body ? JSON.stringify(body) : undefined,
   });
@@ -88,41 +87,50 @@ async function apiRequest<T>(
 
 // API response types
 interface BalanceResponse {
-  balance: number;
-  balance_usd?: number;
-  pending?: number;
-}
-
-interface BucketsResponse {
-  buckets: Array<{
-    id: string;
-    name: string;
-    btc_balance_sats: number;
-    usdc_balance: number;
-    auto_approve_limit_sats?: number;
-    auto_approve_limit_usdc?: number;
-  }>;
+  bucket_name: string;
+  bucket_id: string;
+  token: string;
+  currency: string;
+  chain: string;
+  balance: string;
+  balance_smallest_unit: string;
+  balance_formatted: string;
+  balance_sats?: number;
+  balance_btc?: string;
+  balance_micro?: number;
+  balance_usd?: string;
+  pending_sats?: number;
 }
 
 interface SendResponse {
   transaction_id: string;
-  status: 'pending' | 'approved' | 'completed' | 'rejected';
-  requires_approval: boolean;
+  status: 'pending_approval' | 'completed' | 'denied';
   message?: string;
+  expires_at?: string;
+  idempotent?: boolean;
 }
 
 interface ReceiveAddressResponse {
+  bucket_id: string;
+  bucket_name: string;
+  currency: string;
+  chain: string;
   address: string;
-  expires_at?: string;
+  note?: string;
 }
 
 interface TxStatusResponse {
-  transaction_id: string;
-  status: 'pending' | 'approved' | 'completed' | 'rejected' | 'failed';
-  tx_hash?: string;
-  confirmations?: number;
+  id: string;
+  status: 'pending_approval' | 'completed' | 'denied' | 'failed' | 'expired';
+  type: string;
+  amount_sats?: number;
+  amount_decimal?: string;
+  currency?: string;
+  address: string;
+  justification?: string;
+  approval_method?: string;
   created_at: string;
-  updated_at: string;
+  completed_at?: string;
 }
 
 /**
@@ -132,7 +140,7 @@ function createServer(): Server {
   const server = new Server(
     {
       name: 'paypls',
-      version: '0.1.0',
+      version: '0.2.0',
     },
     {
       capabilities: {
@@ -146,7 +154,7 @@ function createServer(): Server {
     tools: [
       {
         name: 'wallet_balance',
-        description: 'Get the balance of a wallet bucket. Returns balance in the native unit (sats for BTC, dollars for USDC) plus approximate USD value.',
+        description: 'Get the balance of your wallet. Returns balance in the native unit (sats for BTC, micro-units for USDC/EURC) plus formatted display values.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -156,18 +164,10 @@ function createServer(): Server {
             },
             token: {
               type: 'string',
-              enum: ['BTC', 'USDC'],
-              description: 'Which token balance to check. Defaults to BTC.',
+              enum: ['BTC', 'USDC', 'EURC'],
+              description: 'Which token balance to check. If not specified, uses the primary bucket.',
             },
           },
-        },
-      },
-      {
-        name: 'wallet_list_buckets',
-        description: 'List all wallet buckets you have access to, with their balances and auto-approve limits for both BTC and USDC.',
-        inputSchema: {
-          type: 'object',
-          properties: {},
         },
       },
       {
@@ -192,13 +192,17 @@ function createServer(): Server {
               type: 'string',
               description: 'Clear explanation of why this payment is needed. This is shown to the human for approval.',
             },
+            idempotency_key: {
+              type: 'string',
+              description: 'Optional unique key to prevent duplicate transactions. If provided and a transaction with this key exists (within 24h), returns the existing transaction.',
+            },
           },
           required: ['address', 'amount_sats', 'justification'],
         },
       },
       {
         name: 'wallet_send_usdc',
-        description: 'Send USDC (stablecoin) to an address. May require human approval depending on amount. USDC is ideal for stable-value payments.',
+        description: 'Send USDC (stablecoin) to an EVM address. May require human approval depending on amount. USDC is ideal for stable-value payments.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -208,15 +212,19 @@ function createServer(): Server {
             },
             address: {
               type: 'string',
-              description: 'The wallet address to send to (Ethereum, Polygon, or Solana address depending on network).',
+              description: 'The EVM wallet address to send to (0x... format).',
             },
             amount_usdc: {
               type: 'number',
-              description: 'Amount to send in USDC (e.g., 25.00 for $25). USDC is a stablecoin pegged to USD.',
+              description: 'Amount to send in micro-USDC (1 USDC = 1,000,000 micro-USDC). For example: 5000000 = $5.00 USDC.',
             },
             justification: {
               type: 'string',
               description: 'Clear explanation of why this payment is needed. This is shown to the human for approval.',
+            },
+            idempotency_key: {
+              type: 'string',
+              description: 'Optional unique key to prevent duplicate transactions.',
             },
           },
           required: ['address', 'amount_usdc', 'justification'],
@@ -224,7 +232,7 @@ function createServer(): Server {
       },
       {
         name: 'wallet_receive',
-        description: 'Get an address to receive funds into a bucket. Specify token type to get the appropriate address format.',
+        description: 'Get an address to receive funds into your wallet. Returns a deposit address for the specified bucket.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -232,17 +240,12 @@ function createServer(): Server {
               type: 'string',
               description: 'The bucket to receive into. Defaults to primary bucket if not specified.',
             },
-            token: {
-              type: 'string',
-              enum: ['BTC', 'USDC'],
-              description: 'Which token to receive. Defaults to BTC. Use USDC for stablecoin payments.',
-            },
           },
         },
       },
       {
         name: 'wallet_tx_status',
-        description: 'Check the status of a transaction by its ID.',
+        description: 'Check the status of a transaction by its ID. Use this to poll for approval status after a send that requires human approval.',
         inputSchema: {
           type: 'object',
           properties: {
@@ -265,37 +268,23 @@ function createServer(): Server {
       switch (name) {
         case 'wallet_balance': {
           const input = WalletBalanceSchema.parse(args);
-          const bucketId = input.bucket_id || 'primary';
-          const result = await apiRequest<BalanceResponse>(
-            `/v1/buckets/${bucketId}/balance?token=${input.token}`
-          );
+          // Build query string for optional params
+          const params = new URLSearchParams();
+          if (input.bucket_id) params.set('bucket_id', input.bucket_id);
+          if (input.token) params.set('token', input.token);
+          const queryString = params.toString();
+          const endpoint = `/agent/balance${queryString ? `?${queryString}` : ''}`;
+          
+          const result = await apiRequest<BalanceResponse>(endpoint);
           return {
             content: [
               {
                 type: 'text',
                 text: JSON.stringify({
                   ...result,
-                  token: input.token,
-                  hint: input.token === 'USDC'
-                    ? 'USDC is a stablecoin - 1 USDC ≈ $1 USD'
+                  hint: result.token === 'USDC' || result.token === 'EURC'
+                    ? `${result.token} is a stablecoin - 1 ${result.token} ≈ $1 USD`
                     : 'BTC price varies - check current rate for accurate USD value',
-                }, null, 2),
-              },
-            ],
-          };
-        }
-
-        case 'wallet_list_buckets': {
-          WalletListBucketsSchema.parse(args);
-          const result = await apiRequest<BucketsResponse>('/v1/buckets');
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify({
-                  ...result,
-                  supported_tokens: ['BTC', 'USDC'],
-                  note: 'Each bucket can hold both BTC and USDC',
                 }, null, 2),
               },
             ],
@@ -304,12 +293,12 @@ function createServer(): Server {
 
         case 'wallet_send_btc': {
           const input = WalletSendBtcSchema.parse(args);
-          const result = await apiRequest<SendResponse>('/v1/transactions/send', 'POST', {
-            bucket_id: input.bucket_id || 'primary',
+          const result = await apiRequest<SendResponse>('/agent/send', 'POST', {
+            bucket_id: input.bucket_id,
             address: input.address,
             amount_sats: input.amount_sats,
             justification: input.justification,
-            token: 'BTC',
+            idempotency_key: input.idempotency_key,
           });
           return {
             content: [
@@ -320,6 +309,9 @@ function createServer(): Server {
                   token: 'BTC',
                   amount_sats: input.amount_sats,
                   amount_btc: (input.amount_sats / 100_000_000).toFixed(8),
+                  next_steps: result.status === 'pending_approval' 
+                    ? 'Transaction requires human approval. Poll wallet_tx_status to check status, or wait for approval notification.'
+                    : undefined,
                 }, null, 2),
               },
             ],
@@ -328,12 +320,12 @@ function createServer(): Server {
 
         case 'wallet_send_usdc': {
           const input = WalletSendUsdcSchema.parse(args);
-          const result = await apiRequest<SendResponse>('/v1/transactions/send', 'POST', {
-            bucket_id: input.bucket_id || 'primary',
+          const result = await apiRequest<SendResponse>('/agent/send', 'POST', {
+            bucket_id: input.bucket_id,
             address: input.address,
             amount_usdc: input.amount_usdc,
             justification: input.justification,
-            token: 'USDC',
+            idempotency_key: input.idempotency_key,
           });
           return {
             content: [
@@ -342,8 +334,11 @@ function createServer(): Server {
                 text: JSON.stringify({
                   ...result,
                   token: 'USDC',
-                  amount_usdc: input.amount_usdc,
-                  amount_usd: `$${input.amount_usdc.toFixed(2)}`,
+                  amount_micro: input.amount_usdc,
+                  amount_usd: `$${(input.amount_usdc / 1_000_000).toFixed(2)}`,
+                  next_steps: result.status === 'pending_approval'
+                    ? 'Transaction requires human approval. Poll wallet_tx_status to check status.'
+                    : undefined,
                 }, null, 2),
               },
             ],
@@ -352,9 +347,10 @@ function createServer(): Server {
 
         case 'wallet_receive': {
           const input = WalletReceiveSchema.parse(args);
-          const bucketId = input.bucket_id || 'primary';
           const result = await apiRequest<ReceiveAddressResponse>(
-            `/v1/buckets/${bucketId}/address?token=${input.token}`
+            '/agent/receive',
+            'POST',
+            input.bucket_id ? { bucket_id: input.bucket_id } : {}
           );
           return {
             content: [
@@ -362,10 +358,9 @@ function createServer(): Server {
                 type: 'text',
                 text: JSON.stringify({
                   ...result,
-                  token: input.token,
-                  note: input.token === 'USDC'
-                    ? 'Send USDC to this address. Network fees apply.'
-                    : 'Send Bitcoin to this address. Requires 1 confirmation.',
+                  instructions: result.currency === 'BTC'
+                    ? 'Send Bitcoin to this address. Requires confirmations before available.'
+                    : `Send ${result.currency} on ${result.chain} to this address. Network fees apply.`,
                 }, null, 2),
               },
             ],
@@ -375,7 +370,7 @@ function createServer(): Server {
         case 'wallet_tx_status': {
           const input = WalletTxStatusSchema.parse(args);
           const result = await apiRequest<TxStatusResponse>(
-            `/v1/transactions/${input.transaction_id}`
+            `/agent/tx/${input.transaction_id}`
           );
           return {
             content: [
